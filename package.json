@@ -38,6 +38,7 @@
   ],
   "homepage": "https://github.com/MDSLKTR/pouch-vue",
   "dependencies": {
+    "or": "^0.2.0",
     "pouchdb-live-find": "^0.4.0",
     "pouchdb-utils": "^9.0.0"
   },

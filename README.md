@@ -1,33 +1,36 @@
 # Pouch Vue
 
-## This Plugin is now under active development again thanks to @assemblethis
+## This Plugin is not under active development anymore since none of the maintaining members are actively using it.
 
 ##### Basic structure copied from https://github.com/buhrmi/vue-pouch with a lot of api changes though. TypeScript support included too.
 
 ## Installation
 Make sure to have `pouchdb-browser` (or `pouchdb` depending on what you need) `pouchdb-find` and `pouchdb-live-find` installed
-````
+````sh
     npm i pouchdb-browser pouchdb-live-find pouchdb-find
 ````
 
 Install via npm:
-```
+```sh
     npm install --save pouch-vue
 ```
 
 The only requirement is that `pouchdb-live-find` is installed:
-```
+```javascript
     import PouchDB from 'pouchdb-browser'
-    PouchDB.plugin(require('pouchdb-find'));
-    PouchDB.plugin(require('pouchdb-live-find'));
+    import PouchFind from 'pouchdb-find'
+    import PouchLiveFind from 'pouchdb-live-find'
+    
+    PouchDB.plugin(PouchFind)
+    PouchDB.plugin(PouchLiveFind)
 ```
 
 If you want to use remote databases (CouchDB, Cloudant, etc.), you should also install the authentication plugin:
-```
+```javascript
     PouchDB.plugin(require('pouchdb-authentication'));
 ```
 Then, plug VuePouch into Vue:
-```
+```javascript
     import Vue from 'vue';
     import PouchVue from 'pouch-vue';
     
@@ -53,6 +56,18 @@ PouchDB v7.0.0 had an issue where `fetch` requests did not send credentials (e.g
 This issue was resolved in **PouchDB v7.1.1** and later versions, where `fetch` defaults were updated to include credentials, aligning with XHR behavior.
 
 **It is recommended to use PouchDB v7.1.1 or a newer version to avoid this issue.** If you are using this plugin (`pouch-vue`), you are likely using a PouchDB version where this is no longer a concern.
+```javascript
+Vue.use(pouchVue,{
+  pouch: PouchDB,
+  defaultDB: 'todos',
+  optionsDB: {
+    fetch: function (url:any, opts:any) {
+        opts.credentials = 'include';
+        return PouchDB.fetch(url, opts);
+    }
+  }
+})
+```
 ## API
 ### $pouch
 
@@ -77,7 +92,7 @@ ___
 * `$pouch.sync(localDatabase, OPTIONAL remoteDatabase, OPTIONAL options)`: The optional remoteDatabase parameter will use the default db set in the pouch options initially. Basically the same as PouchDB.sync(local, remote, {live: true, retry: true}). Also, if the browser has an active session cookie, it will fetch session data (username, etc) from the remote server. **BONUS:** If your remote database runs CouchDB 2.0 or higher, you can also specify a Mango Selector that is used to filter documents coming from the remote server. Callback functions will be invoked with the name `pouchdb-[method]-[type]`. So in this case you can use `this.$on('pouchdb-sync-change', callback(data))` to listen when a change occurs. See https://pouchdb.com/api.html#sync for a full list of events you can use.
 
 **default options (will be merged with the options passed in)**:
- ```
+ ```javascript
 {
     live: true,
     retry: true,
@@ -90,7 +105,7 @@ ___
 }
 ```
 **For example:**
-```
+```javascript
     $pouch.sync('complaints', 'https:/42.233.1.44/complaints', {
         selector: {
             type: 'complaint',
@@ -104,7 +119,7 @@ ___
 * `$pouch.changes(OPTIONAL options, OPTIONAL db)`: Listens for change on a db like: https://pouchdb.com/api.html#changes
 * `$pouch.put(object, OPTIONAL options, OPTIONAL db)`: https://pouchdb.com/api.html#create_document
 * `$pouch.post(object, OPTIONAL options, OPTIONAL db)`: https://pouchdb.com/api.html#create_document
-* `$pouch.remove(object, OPTIONAL options, OPTIONAL db)`: https://pouchdb.com/api.html#create_document
+* `$pouch.remove(id, rev, OPTIONAL db)`: https://pouchdb.com/api.html#delete_document
 * `$pouch.get(object, OPTIONAL options, OPTIONAL db)`: https://pouchdb.com/api.html#create_document
 * `$pouch.query('map/reduce function', OPTIONAL options, OPTIONAL db)`: like https://pouchdb.com/api.html#query_database
 * `$pouch.allDocs(OPTIONAL options, OPTIONAL db)`: like https://pouchdb.com/api.html#batch_fetch but `include_docs` is set to true by default. You can however overwrite it of course.
@@ -196,7 +211,7 @@ ___
 
 If you only want to sync a single document that matches a selector, use `first: true`:
 
-```vue
+```javascript
 module.exports = {
   // ...
   pouch: {
@@ -217,7 +232,7 @@ TypeScript example with a TypeScript file to include the pouch-vue plugin and a 
 using the plugin.
 
 main.ts
-```vue
+```typescript
 
 import { Component, Vue } from 'vue-property-decorator';
 import PouchDB from 'pouchdb-browser';
@@ -282,7 +297,7 @@ export default class Todos extends Vue {
 
 ### User Authentication
 
-```vue
+```javascript
  this.$pouch.connect(this.credentials.username, this.credentials.password)
     .then((res) => {
         let isUnauthorized = res.error === 'unauthorized',
@@ -303,7 +318,7 @@ export default class Todos extends Vue {
 ```
 
 ### Handle Sessions
-```
+```javascript
 this.$pouch.getSession().then((data) => {
     if (data.status === 0) {
         this.$router.push('/login');
