@@ -1,888 +1,412 @@
 import { isRemote } from 'pouchdb-utils';
 
-(function() {
-    let vue = null,
-        pouch = null,
-        defaultDB = null,
-        defaultUsername = null,
-        defaultPassword = null,
-        databases = {},
-        optionsDB = {};
-
-    let vuePouch = {
-        /* Creates a property in 'data' with 'null' value for each pouch property
-         * defined on the component.  This way the user does not have to manually
-         * define a data property for the reactive databases/selectors.
-         *
-         * This partial 'data' object is mixed into the components along with
-         * the rest of the API (but is empty unless the component has a 'pouch'
-         * option).
-         */
-        data(vm) {
-            let pouchOptions = vm.$options.pouch;
-            if (typeof pouchOptions === 'undefined' || pouchOptions === null) return {};
-            if (typeof pouchOptions === 'function') pouchOptions = pouchOptions(vm);
-            return Object.keys(pouchOptions).reduce((accumulator, currentValue) => {
-                accumulator[currentValue] = null;
-                return accumulator
-            }, {});
-        },
-
-        // lifecycle hooks for mixin
-
-        // now that the data object has been observed and made reactive
-        // the api can be set up
-        created() {
-            if (!vue) {
-                console.warn('pouch-vue not installed!');
-                return;
-            }
-
-            let vm = this;
-
-            vm._liveFeeds = {};
-
-            if (defaultDB) {
-                makeInstance(defaultDB);
-            }
-
-            function fetchSession(db = databases[defaultDB]) {
-                return new Promise(resolve => {
-                    db
-                        .getSession()
-                        .then(session => {
-                            db
-                                .getUser(session.userCtx.name)
-                                .then(userData => {
-                                    let userObj = Object.assign(
-                                        {},
-                                        session.userCtx,
-                                        userData
-                                    );
-                                    resolve({
-                                        user: userObj,
-                                        hasAccess: true,
-                                    });
-                                })
-                                .catch(error => {
-                                    resolve(error);
-                                });
-                        })
-                        .catch(error => {
-                            resolve(error);
-                        });
-                });
-            }
-
-            function login(db = databases[defaultDB]) {
-                return new Promise(resolve => {
-
-                    db
-                        .logIn(defaultUsername, defaultPassword)
-                        .then(user => {
-                            db
-                                .getUser(user.name)
-                                .then(userData => {
-                                    let userObj = Object.assign(
-                                        {},
-                                        user,
-                                        userData
-                                    );
-                                    resolve({
-                                        user: userObj,
-                                        hasAccess: true,
-                                    });
-                                })
-                                .catch(error => {
-                                    resolve(error);
-                                });
-                        })
-                        .catch(error => {
-                            resolve(error);
-                        });
-                });
-            }
-
-            function makeInstance(db, options = {}) {
-                // Merge the plugin optionsDB options with those passed in
-                // when creating pouch dbs.
-                // Note: default opiontsDB options are passed in when creating 
-                // both local and remote pouch databases. E.g. modifying fetch()
-                // in the options is only useful for remote Dbs but will be passed
-                // for local pouch dbs too if set in optionsDB.
-                // See: https://pouchdb.com/api.html#create_database
-            
-                let _options = Object.assign(
-                    {},
-                    optionsDB,
-                    options
-                )
-
-                databases[db] = new pouch(db, _options);
-                registerListeners(databases[db]);
-            }
-
-            function registerListeners(db) {
-                db.on('created', name => {
-                    vm.$emit('pouchdb-db-created', {
-                        db: name,
-                        ok: true,
-                    });
-                });
-                db.on('destroyed', name => {
-                    vm.$emit('pouchdb-db-destroyed', {
-                        db: name,
-                        ok: true,
-                    });
-                });
-            }
-
-            let $pouch = {
-                version: '__VERSION__',
-                connect(username, password, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return new Promise(resolve => {
-                        defaultUsername = username;
-                        defaultPassword = password;
-
-                        if (!isRemote(databases[db])) {
-                            resolve({
-                                message: 'database is not remote',
-                                error: 'bad request',
-                                status: 400,
-                            });
-                            return;
-                        }
-
-                        login(databases[db]).then(res => {
-                            resolve(res);
-                        });
-                    });
-                },
-                createUser(username, password, db = defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .signUp(username, password)
-                        .then(() => {
-                            return vm.$pouch.connect(username, password, db);
-                        })
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                putUser(username, metadata = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .putUser(username, {
-                            metadata,
-                        })
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                deleteUser(username, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .deleteUser(username)
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                changePassword(username, password, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .changePassword(username, password)
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                changeUsername(oldUsername, newUsername, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .changeUsername(oldUsername, newUsername)
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                signUpAdmin(adminUsername, adminPassword, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .signUpAdmin(adminUsername, adminPassword)
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                deleteAdmin(adminUsername, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db]
-                        .deleteAdmin(adminUsername)
-                        .catch(error => {
-                            return new Promise(resolve => {
-                                resolve(error);
-                            });
-                        });
-                },
-                disconnect(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return new Promise(resolve => {
-                        defaultUsername = null;
-                        defaultPassword = null;
-
-                        if (!isRemote(databases[db])) {
-                            resolve({
-                                message: 'database is not remote',
-                                error: 'bad request',
-                                status: 400,
-                            });
-                            return;
-                        }
-
-                        databases[db]
-                            .logOut()
-                            .then(res => {
-                                resolve({
-                                    ok: res.ok,
-                                    user: null,
-                                    hasAccess: false,
-                                });
-                            })
-                            .catch(error => {
-                                resolve(error);
-                            });
-                    });
-                },
-
-                destroy(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].destroy().then(() => {
-                        if (db !== defaultDB) {
-                            delete databases[db];
-                        }
-                    });
-                },
-
-                defaults(options = {}) {
-                    pouch.defaults(options);
-                },
-
-                close(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].close().then(() => {
-                        if (db !== defaultDB) {
-                            delete databases[db];
-                        }
-                    });
-                },
-
-                getSession(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    if (!isRemote(databases[db])) {
-                        return new Promise(resolve => {
-                            resolve({
-                                message: 'database is not remote',
-                                error: 'bad request',
-                                status: 400,
-                            });
-                        });
-                    }
-                    return fetchSession(databases[db]);
-                },
-
-                sync(localDB, remoteDB=defaultDB, options = {}) {
-                    if (!databases[localDB]) {
-                        makeInstance(localDB);
-                    }
-                    if (!databases[remoteDB]) {
-                        makeInstance(remoteDB);
-                    }
-                    if (!defaultDB) {
-                        defaultDB = remoteDB;
-                    }
-
-                    let _options = Object.assign(
-                        {},
-                        {
-                            live: true,
-                            retry: true,
-                            back_off_function: delay => {
-                                if (delay === 0) {
-                                    return 1000;
-                                }
-                                return delay * 3;
-                            },
-                        },
-                        options
-                    );
-
-                    let sync = pouch
-                        .sync(databases[localDB], databases[remoteDB], _options)
-                        .on('paused', err => {
-                            if (err) {
-                                vm.$emit('pouchdb-sync-error', {
-                                    db: localDB,
-                                    error: err,
-                                });
-                                return;
-                            }
-                            else {
-
-                                vm.$emit('pouchdb-sync-paused', {
-                                    db: localDB,
-                                    paused: true,
-                                });
-                            }
-                        })
-                        .on('change', info => {
-                            vm.$emit('pouchdb-sync-change', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('active', () => {
-                            vm.$emit('pouchdb-sync-active', {
-                                db: localDB,
-                                active: true,
-                            });
-                        })
-                        .on('denied', err => {
-                            vm.$emit('pouchdb-sync-denied', {
-                                db: localDB,
-                                error: err,
-                            });
-                        })
-                        .on('complete', info => {
-                            vm.$emit('pouchdb-sync-complete', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('error', err => {
-                            vm.$emit('pouchdb-sync-error', {
-                                db: localDB,
-                                error: err,
-                            });
-                        });
-
-                    return sync;
-                },
-                push(localDB, remoteDB=defaultDB, options = {}) {
-                    if (!databases[localDB]) {
-                        makeInstance(localDB);
-                    }
-                    if (!databases[remoteDB]) {
-                        makeInstance(remoteDB);
-                    }
-                    if (!defaultDB) {
-                        defaultDB = remoteDB;
-                    }
-
-                    let _options = Object.assign(
-                        {},
-                        {
-                            live: true,
-                            retry: true,
-                            back_off_function: delay => {
-                                if (delay === 0) {
-                                    return 1000;
-                                }
-                                return delay * 3;
-                            },
-                        },
-                        options
-                    );
-
-                    let rep = databases[localDB].replicate
-                        .to(databases[remoteDB], options)
-                        .on('paused', err => {
-                            if (err) {
-                                vm.$emit('pouchdb-push-error', {
-                                    db: localDB,
-                                    error: err,
-                                });
-                                return;
-                            }
-                            else {
-                                vm.$emit('pouchdb-push-paused', {
-                                    db: localDB,
-                                    paused: true,
-                                });
-                            }
-                        })
-                        .on('change', info => {
-                            vm.$emit('pouchdb-push-change', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('active', () => {
-                            vm.$emit('pouchdb-push-active', {
-                                db: localDB,
-                                active: true,
-                            });
-                        })
-                        .on('denied', err => {
-                            vm.$emit('pouchdb-push-denied', {
-                                db: localDB,
-                                error: err,
-                            });
-                        })
-                        .on('complete', info => {
-                            vm.$emit('pouchdb-push-complete', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('error', err => {
-                            vm.$emit('pouchdb-push-error', {
-                                db: localDB,
-                                error: err,
-                            });
-                        });
-
-                    return rep;
-                },
-
-                pull(localDB, remoteDB=defaultDB, options = {}) {
-                    if (!databases[localDB]) {
-                        makeInstance(localDB);
-                    }
-                    if (!databases[remoteDB]) {
-                        makeInstance(remoteDB);
-                    }
-                    if (!defaultDB) {
-                        defaultDB = remoteDB;
-                    }
-
-                    let _options = Object.assign(
-                        {},
-                        {
-                            live: true,
-                            retry: true,
-                            back_off_function: delay => {
-                                if (delay === 0) {
-                                    return 1000;
-                                }
-                                return delay * 3;
-                            },
-                        },
-                        options
-                    );
-
-                    let rep = databases[localDB].replicate
-                        .from(databases[remoteDB], options)
-                        .on('paused', err => {
-                            if (err) {
-                                vm.$emit('pouchdb-pull-error', {
-                                    db: localDB,
-                                    error: err,
-                                });
-                                return;
-                            }
-                            else {
-                                vm.$emit('pouchdb-pull-paused', {
-                                    db: localDB,
-                                    paused: true,
-                                });
-                            }
-                        })
-                        .on('change', info => {
-                            vm.$emit('pouchdb-pull-change', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('active', () => {
-                            vm.$emit('pouchdb-pull-active', {
-                                db: localDB,
-                                active: true,
-                            });
-                        })
-                        .on('denied', err => {
-                            vm.$emit('pouchdb-pull-denied', {
-                                db: localDB,
-                                error: err,
-                            });
-                        })
-                        .on('complete', info => {
-                            vm.$emit('pouchdb-pull-complete', {
-                                db: localDB,
-                                info: info,
-                            });
-                        })
-                        .on('error', err => {
-                            vm.$emit('pouchdb-pull-error', {
-                                db: localDB,
-                                error: err,
-                            });
-                        });
-
-                    return rep;
-                },
-
-                changes(options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    let _options = Object.assign(
-                        {},
-                        {
-                            live: true,
-                            retry: true,
-                            back_off_function: delay => {
-                                if (delay === 0) {
-                                    return 1000;
-                                }
-                                return delay * 3;
-                            },
-                        },
-                        options
-                    );
-
-                    let changes = databases[db]
-                        .changes(_options)
-                        .on('change', info => {
-                            vm.$emit('pouchdb-changes-change', {
-                                db: db,
-                                info: info,
-                            });
-                        })
-                        .on('complete', info => {
-                            vm.$emit('pouchdb-changes-complete', {
-                                db: db,
-                                info: info,
-                            });
-                        })
-                        .on('error', err => {
-                            vm.$emit('pouchdb-changes-error', {
-                                db: db,
-                                error: err,
-                            });
-                        });
-
-                    return changes;
-                },
-
-                get(object, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db].get(object, options);
-                },
-
-                put(object, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db].put(object, options);
-                },
-
-                post(object, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db].post(object, options);
-                },
-
-                remove(object, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db].remove(object, options);
-                },
-
-                query(fun, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-                    return databases[db].query(fun, options);
-                },
-
-                find(options, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].find(options);
-                },
-
-                createIndex(index, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].createIndex(index);
-                },
-
-                allDocs(options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    let _options = Object.assign(
-                        {},
-                        { include_docs: true },
-                        options
-                    );
-
-                    return databases[db].allDocs(_options);
-                },
-
-                bulkDocs(docs, options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].bulkDocs(docs, options);
-                },
-
-                compact(options = {}, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].compact(options);
-                },
-
-                viewCleanup(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].viewCleanup();
-                },
-
-                info(db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].info();
-                },
-
-                putAttachment(docId, rev, attachment, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].putAttachment(
-                        docId,
-                        attachment.id,
-                        rev ? rev : null,
-                        attachment.data,
-                        attachment.type
-                    );
-                },
-
-                getAttachment(docId, attachmentId, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].getAttachment(docId, attachmentId);
-                },
-
-                deleteAttachment(docId, attachmentId, docRev, db=defaultDB) {
-                    if (!databases[db]) {
-                        makeInstance(db);
-                    }
-
-                    return databases[db].removeAttachment(
-                        docId,
-                        attachmentId,
-                        docRev
-                    );
-                },
-            };
-
-            // add non reactive api
-            vm.$pouch = $pouch;
-            //add non reactive property
-            vm.$databases = databases; // Add non-reactive property
-
-            let pouchOptions = this.$options.pouch;
-
-            if (!pouchOptions) {
-                return;
-            }
-
-            if (typeof pouchOptions === 'function') {
-                pouchOptions = pouchOptions();
-            }
-
-            Object.keys(pouchOptions).map(key => {
-                let pouchFn = pouchOptions[key];
-                if (typeof pouchFn !== 'function') {
-                    pouchFn = () => {
-                        return pouchOptions[key];
-                    };
-                }
-
-                // if the selector changes, modify the liveFeed object
-                //
-                vm.$watch(
-                    pouchFn,
-                    config => {
-                        // if the selector is now giving a value of null or undefined, then return
-                        // the previous liveFeed object will remain
-                        if (!config) {
-                            vm.$emit('pouchdb-livefeed-error', {
-                                db: key,
-                                config: config,
-                                error: 'Null or undefined selector',
-                            });
-
-                            return;
-                        }
-
-
-                        let selector, sort, skip, limit, first;
-
-                        if (config.selector) {
-                            selector = config.selector;
-                            sort = config.sort;
-                            skip = config.skip;
-                            limit = config.limit;
-                            first = config.first;
-                        } else {
-                            selector = config;
-                        }
-
-                        // the database could change in the config options
-                        // so the key could point to a database of a different name
-                        let databaseParam = config.database || key;
-                        let db = null;
-
-                        if (typeof databaseParam === 'object') {
-                            db = databaseParam;
-                        } else if (typeof databaseParam === 'string') {
-                            if (!databases[databaseParam]) {
-                                makeInstance(databaseParam);
-                            }
-                            db = databases[databaseParam];
-                        }
-                        if (!db) {
-                            vm.$emit('pouchdb-livefeed-error', {
-                                db: key,
-                                error: 'Null or undefined database',
-                            });
-                            return;
-                        }
-                        if (vm._liveFeeds[key]) {
-                            vm._liveFeeds[key].cancel();
-                        }
-                        let aggregateCache = [];
-
-                        // the LiveFind plugin returns a liveFeed object
-                        vm._liveFeeds[key] = db
-                            .liveFind({
-                                selector: selector,
-                                sort: sort,
-                                skip: skip,
-                                limit: limit,
-                                aggregate: true,
-                            })
-                            .on('update', (update, aggregate) => {
-                                if (first && aggregate)
-                                    aggregate = aggregate[0];
-
-                                vm.$data[key] = aggregateCache = aggregate;
-
-                                vm.$emit('pouchdb-livefeed-update', {
-                                    db: key,
-                                    name: db.name,
-                                });
-
-                            })
-                            .on('ready', () => {
-                                vm.$data[key] = aggregateCache;
-
-                                vm.$emit('pouchdb-livefeed-ready', {
-                                    db: key,
-                                    name: db.name,
-                                });
-                            })
-                            .on('cancelled', function() {
-                                vm.$emit('pouchdb-livefeed-cancel', {
-                                    db: key,
-                                    name: db.name,
-                                });
-                            })
-                            .on('error', function(err) {
-                                vm.$emit('pouchdb-livefeed-error', {
-                                    db: key,
-                                    name: db.name,
-                                    error: err,
-                                });
-                            });
-                    },
-                    {
-                        immediate: true,
-                    }
+// Step 1 & 2: Removed IIFE, vars to let/const
+let vueInstance = null; // Renamed 'vue' to 'vueInstance' to avoid conflict with Vue import if ever needed by name
+let pouchDbInstance = null; // Renamed 'pouch' to 'pouchDbInstance'
+let globalDefaultDB = null; // Renamed 'defaultDB'
+let globalDefaultUsername = null; // Renamed 'defaultUsername'
+let globalDefaultPassword = null; // Renamed 'defaultPassword'
+const databases = {};
+let globalOptionsDB = {}; // Renamed 'optionsDB'
+
+const vuePouchMixin = { // Renamed 'vuePouch'
+    data(vm) {
+        let pouchOptions = vm.$options.pouch;
+        if (typeof pouchOptions === 'undefined' || pouchOptions === null) return {};
+        if (typeof pouchOptions === 'function') pouchOptions = pouchOptions.call(vm); // Ensure context
+        return Object.keys(pouchOptions).reduce((accumulator, currentValue) => {
+            accumulator[currentValue] = null;
+            return accumulator;
+        }, {});
+    },
+
+    created() {
+        if (!vueInstance) {
+            console.warn('pouch-vue not installed!');
+            return;
+        }
+
+        const vm = this;
+        vm._liveFeeds = {};
+
+        if (globalDefaultDB) {
+            makeInstance(globalDefaultDB);
+        }
+
+        function fetchSession(db = databases[globalDefaultDB]) {
+            return db.getSession()
+                .then(session => db.getUser(session.userCtx.name)
+                    .then(userData => ({
+                        user: { ...session.userCtx, ...userData },
+                        hasAccess: true,
+                    })),
                 );
+            // Step 3: Improved error handling (let it propagate or be caught by caller)
+        }
+
+        function login(db = databases[globalDefaultDB]) {
+            return db.logIn(globalDefaultUsername, globalDefaultPassword)
+                .then(user => db.getUser(user.name)
+                    .then(userData => ({
+                        user: { ...user, ...userData },
+                        hasAccess: true,
+                    })),
+                );
+            // Step 3: Improved error handling
+        }
+
+        function makeInstance(dbName, options = {}) { // Renamed 'db' to 'dbName' for clarity
+            const _options = { ...globalOptionsDB, ...options }; // Use spread for merging
+            databases[dbName] = new pouchDbInstance(dbName, _options);
+            registerListeners(databases[dbName]);
+        }
+
+        function registerListeners(dbInstance) { // Renamed 'db' to 'dbInstance'
+            dbInstance.on('created', name => {
+                vm.$emit('pouchdb-db-created', { db: name, ok: true });
             });
-        },
-        // tear down the liveFeed objects
-        beforeDestroy() {
-            Object.keys(this._liveFeeds).map(lfKey => {
-                this._liveFeeds[lfKey].cancel();
+            dbInstance.on('destroyed', name => {
+                vm.$emit('pouchdb-db-destroyed', { db: name, ok: true });
             });
-        },
-    };
+        }
 
-    let api = {
-        install: (Vue, options = {}) => {
-            vue = Vue;
+        const $pouch = {
+            version: '__VERSION__',
+            connect(username, password, dbName = globalDefaultDB) { // Renamed 'db' to 'dbName'
+                if (!databases[dbName]) makeInstance(dbName);
+                globalDefaultUsername = username;
+                globalDefaultPassword = password;
 
-            ({ pouch = PouchDB, defaultDB = '', optionsDB = {} } = options);
+                if (!isRemote(databases[dbName])) {
+                    return Promise.resolve({ // Still resolve for non-remote, as it's not an "error" but a state
+                        message: 'database is not remote',
+                        error: 'bad request',
+                        status: 400,
+                    });
+                }
+                return login(databases[dbName]);
+            },
+            createUser(username, password, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].signUp(username, password)
+                    .then(() => vm.$pouch.connect(username, password, dbName))
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            putUser(username, metadata = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].putUser(username, { metadata })
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            deleteUser(username, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].deleteUser(username)
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            changePassword(username, password, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].changePassword(username, password)
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            changeUsername(oldUsername, newUsername, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].changeUsername(oldUsername, newUsername)
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            signUpAdmin(adminUsername, adminPassword, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].signUpAdmin(adminUsername, adminPassword)
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            deleteAdmin(adminUsername, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].deleteAdmin(adminUsername)
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            disconnect(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                globalDefaultUsername = null;
+                globalDefaultPassword = null;
 
-            // In PouchDB v7.0.0 the debug() API was moved to a separate plugin.
-            // var pouchdbDebug = require('pouchdb-debug');
-            // PouchDB.plugin(pouchdbDebug);
-            if (options.debug === '*') pouch.debug.enable('*');
+                if (!isRemote(databases[dbName])) {
+                    return Promise.resolve({ // Still resolve for non-remote
+                        message: 'database is not remote',
+                        error: 'bad request',
+                        status: 400,
+                    });
+                }
+                return databases[dbName].logOut()
+                    .then(res => ({
+                        ok: res.ok,
+                        user: null,
+                        hasAccess: false,
+                    }))
+                    .catch(error => Promise.reject(error)); // Step 3
+            },
+            destroy(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].destroy().then(() => {
+                    if (dbName !== globalDefaultDB) delete databases[dbName];
+                });
+            },
+            defaults(options = {}) {
+                pouchDbInstance.defaults(options);
+            },
+            close(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].close().then(() => {
+                    if (dbName !== globalDefaultDB) delete databases[dbName];
+                });
+            },
+            getSession(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                if (!isRemote(databases[dbName])) {
+                    return Promise.resolve({ // Still resolve for non-remote
+                        message: 'database is not remote',
+                        error: 'bad request',
+                        status: 400,
+                    });
+                }
+                return fetchSession(databases[dbName]);
+            },
+            sync(localDBName, remoteDBName = globalDefaultDB, options = {}) { // Renamed params
+                if (!databases[localDBName]) makeInstance(localDBName);
+                if (!databases[remoteDBName]) makeInstance(remoteDBName);
+                if (!globalDefaultDB) globalDefaultDB = remoteDBName;
 
-            Vue.mixin(vuePouch);
-        },
-    };
+                const _options = {
+                    live: true,
+                    retry: true,
+                    back_off_function: delay => (delay === 0 ? 1000 : delay * 3),
+                    ...options,
+                };
+                const syncHandle = pouchDbInstance.sync(databases[localDBName], databases[remoteDBName], _options);
+                syncHandle.on('paused', err => vm.$emit(err ? 'pouchdb-sync-error' : 'pouchdb-sync-paused', { db: localDBName, error: err, paused: !err }));
+                syncHandle.on('change', info => vm.$emit('pouchdb-sync-change', { db: localDBName, info }));
+                syncHandle.on('active', () => vm.$emit('pouchdb-sync-active', { db: localDBName, active: true }));
+                syncHandle.on('denied', err => vm.$emit('pouchdb-sync-denied', { db: localDBName, error: err }));
+                syncHandle.on('complete', info => vm.$emit('pouchdb-sync-complete', { db: localDBName, info }));
+                syncHandle.on('error', err => vm.$emit('pouchdb-sync-error', { db: localDBName, error: err }));
+                return syncHandle;
+            },
+            push(localDBName, remoteDBName = globalDefaultDB, options = {}) {
+                if (!databases[localDBName]) makeInstance(localDBName);
+                if (!databases[remoteDBName]) makeInstance(remoteDBName);
+                if (!globalDefaultDB) globalDefaultDB = remoteDBName;
 
-    module.exports = api;
-})();
+                const _options = { ...options };
+                const rep = databases[localDBName].replicate.to(databases[remoteDBName], _options);
+                rep.on('paused', err => vm.$emit(err ? 'pouchdb-push-error' : 'pouchdb-push-paused', { db: localDBName, error: err, paused: !err }));
+                rep.on('change', info => vm.$emit('pouchdb-push-change', { db: localDBName, info }));
+                rep.on('active', () => vm.$emit('pouchdb-push-active', { db: localDBName, active: true }));
+                rep.on('denied', err => vm.$emit('pouchdb-push-denied', { db: localDBName, error: err }));
+                rep.on('complete', info => vm.$emit('pouchdb-push-complete', { db: localDBName, info }));
+                rep.on('error', err => vm.$emit('pouchdb-push-error', { db: localDBName, error: err }));
+                return rep;
+            },
+            pull(localDBName, remoteDBName = globalDefaultDB, options = {}) {
+                if (!databases[localDBName]) makeInstance(localDBName);
+                if (!databases[remoteDBName]) makeInstance(remoteDBName);
+                if (!globalDefaultDB) globalDefaultDB = remoteDBName;
+                const _options = { ...options };
+                const rep = databases[localDBName].replicate.from(databases[remoteDBName], _options);
+                rep.on('paused', err => vm.$emit(err ? 'pouchdb-pull-error' : 'pouchdb-pull-paused', { db: localDBName, error: err, paused: !err }));
+                rep.on('change', info => vm.$emit('pouchdb-pull-change', { db: localDBName, info }));
+                rep.on('active', () => vm.$emit('pouchdb-pull-active', { db: localDBName, active: true }));
+                rep.on('denied', err => vm.$emit('pouchdb-pull-denied', { db: localDBName, error: err }));
+                rep.on('complete', info => vm.$emit('pouchdb-pull-complete', { db: localDBName, info }));
+                rep.on('error', err => vm.$emit('pouchdb-pull-error', { db: localDBName, error: err }));
+                return rep;
+            },
+            changes(options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                const _options = {
+                    live: true,
+                    retry: true,
+                    back_off_function: delay => (delay === 0 ? 1000 : delay * 3),
+                    ...options,
+                };
+                const changesHandle = databases[dbName].changes(_options);
+                changesHandle.on('change', info => vm.$emit('pouchdb-changes-change', { db: dbName, info }));
+                changesHandle.on('complete', info => vm.$emit('pouchdb-changes-complete', { db: dbName, info }));
+                changesHandle.on('error', err => vm.$emit('pouchdb-changes-error', { db: dbName, error: err }));
+                return changesHandle;
+            },
+            get(object, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].get(object, options);
+            },
+            put(object, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].put(object, options);
+            },
+            post(object, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].post(object, options);
+            },
+            remove(object, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].remove(object, options);
+            },
+            query(fun, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].query(fun, options);
+            },
+            find(options, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].find(options);
+            },
+            createIndex(index, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].createIndex(index);
+            },
+            allDocs(options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                const _options = { include_docs: true, ...options };
+                return databases[dbName].allDocs(_options);
+            },
+            bulkDocs(docs, options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].bulkDocs(docs, options);
+            },
+            compact(options = {}, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].compact(options);
+            },
+            viewCleanup(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].viewCleanup();
+            },
+            info(dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].info();
+            },
+            putAttachment(docId, rev, attachment, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].putAttachment(docId, attachment.id, rev ? rev : null, attachment.data, attachment.type);
+            },
+            getAttachment(docId, attachmentId, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].getAttachment(docId, attachmentId);
+            },
+            deleteAttachment(docId, attachmentId, docRev, dbName = globalDefaultDB) {
+                if (!databases[dbName]) makeInstance(dbName);
+                return databases[dbName].removeAttachment(docId, attachmentId, docRev);
+            },
+        };
+
+        vm.$pouch = $pouch;
+        vm.$databases = databases;
+
+        let pouchOptions = vm.$options.pouch;
+        if (!pouchOptions) return;
+        if (typeof pouchOptions === 'function') pouchOptions = pouchOptions.call(vm);
+
+        Object.keys(pouchOptions).forEach(key => {
+            let pouchFn = pouchOptions[key];
+            if (typeof pouchFn !== 'function') {
+                const staticConfig = pouchOptions[key];
+                pouchFn = () => staticConfig;
+            }
+
+            vm.$watch(
+                () => pouchFn.call(vm), 
+                config => {
+                    if (!config) {
+                        vm.$emit('pouchdb-livefeed-error', { db: key, config, error: 'Null or undefined selector' });
+                        return;
+                    }
+
+                    const { selector: sel, sort, skip, limit, first, database: dbOption } = config;
+                    const currentSelector = config.selector ? sel : config;
+
+                    const databaseParam = dbOption || key;
+                    let dbInstance = null;
+
+                    if (typeof databaseParam === 'object' && databaseParam instanceof pouchDbInstance) {
+                        dbInstance = databaseParam;
+                    } else if (typeof databaseParam === 'string') {
+                        if (!databases[databaseParam]) makeInstance(databaseParam);
+                        dbInstance = databases[databaseParam];
+                    }
+
+                    if (!dbInstance) {
+                        vm.$emit('pouchdb-livefeed-error', { db: key, error: 'Null or undefined database or not a PouchDB instance' });
+                        return;
+                    }
+
+                    if (vm._liveFeeds[key]) vm._liveFeeds[key].cancel();
+                    
+                    let aggregateCache = [];
+
+                    vm._liveFeeds[key] = dbInstance.liveFind({
+                        selector: currentSelector,
+                        sort,
+                        skip,
+                        limit,
+                        aggregate: true,
+                    })
+                        .on('update', (update, aggregate) => {
+                            const finalAggregate = first && aggregate && aggregate.length > 0 ? aggregate[0] : aggregate;
+                            vm[key] = aggregateCache = finalAggregate;
+                            vm.$emit('pouchdb-livefeed-update', { db: key, name: dbInstance.name });
+                        })
+                        .on('ready', () => {
+                            vm[key] = aggregateCache;
+                            vm.$emit('pouchdb-livefeed-ready', { db: key, name: dbInstance.name });
+                        })
+                        .on('cancelled', () => {
+                            vm.$emit('pouchdb-livefeed-cancel', { db: key, name: dbInstance.name });
+                        })
+                        .on('error', err => {
+                            vm.$emit('pouchdb-livefeed-error', { db: key, name: dbInstance.name, error: err });
+                        });
+                },
+                { immediate: true },
+            );
+        });
+    },
+    beforeDestroy() {
+        Object.keys(this._liveFeeds).forEach(lfKey => {
+            this._liveFeeds[lfKey].cancel();
+        });
+    },
+};
+
+const pluginApi = {
+    install: (Vue, options = {}) => {
+        vueInstance = Vue;
+
+        const PouchDBGlobal = (typeof window !== 'undefined' && window.PouchDB) ? window.PouchDB : null;
+        let pouchInstanceToUse = options.pouch || PouchDBGlobal;
+        
+        ({ 
+            pouch: pouchDbInstance = pouchInstanceToUse,
+            defaultDB: globalDefaultDB = '', 
+            optionsDB: globalOptionsDB = {}, 
+        } = options);
+
+        // If options.pouch was explicitly passed (even as null/undefined), it takes precedence.
+        // If not, then global PouchDB is used. If options.pouch is set, it's already in pouchDbInstance.
+        // The complex destructuring above handles this, but ensure pouchDbInstance is correctly assigned.
+        if (Object.prototype.hasOwnProperty.call(options, 'pouch')) {
+            pouchDbInstance = options.pouch;
+        } else {
+            pouchDbInstance = PouchDBGlobal;
+        }
+        
+        if (!pouchDbInstance) {
+            console.error("PouchDB is not available. Please pass it as an option (e.g., options.pouch = PouchDB) or ensure it's available globally (window.PouchDB).");
+            return;
+        }
+
+        if (options.debug === '*' && pouchDbInstance.debug && typeof pouchDbInstance.debug.enable === 'function') {
+            pouchDbInstance.debug.enable('*');
+        } else if (options.debug === '*' && (!pouchDbInstance.debug || typeof pouchDbInstance.debug.enable !== 'function')) {
+            console.warn("PouchDB debug enabling was requested, but 'PouchDB.debug.enable' is not available on the PouchDB instance.");
+        }
+        
+        Vue.mixin(vuePouchMixin);
+    },
+};
+
+export default pluginApi;
