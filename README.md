@@ -35,24 +35,24 @@ Then, plug VuePouch into Vue:
       pouch: PouchDB,    // optional if `PouchDB` is available on the global object
       defaultDB: 'remoteDbName',  // this is used as a default connect/disconnect database
       optionDB: {}, // this is used to include a custom fetch() method (see TypeScript example)
-      debug: '*' // optional - See `https://pouchdb.com/api.html#debug_mode` for valid settings (will be a separate Plugin in PouchDB 7.0)
+      debug: '*' // optional - See `https://pouchdb.com/api.html#debug_mode` for valid settings
     });
 ```
-### Known issue with PouchDB v7.0
 
-PouchDB v7.0 introduced [an issue with fetch using different defaults than XHR for cross-domain requests](https://github.com/pouchdb/pouchdb/issues/7391). The issue was fixed in PouchDB v7.1.1 so that fetch defaults now include 'credentials' just as XHR defaults come with credentials. If you are using PouchDB v7.0 you will get a 401 Unauthorized error. The workaround for PouchDB v7.0 is to override the fetch function in the defaults:
+### Development and Test Status
 
-```Vue.use(pouchVue,{
-  pouch: PouchDB,
-  defaultDB: 'todos',
-  optionsDB: {
-    fetch: function (url:any, opts:any) {
-        opts.credentials = 'include';
-        return PouchDB.fetch(url, opts);
-    }
-  }
-})
-```
+This library has recently been updated to modernize its dependencies, build system, and core codebase, adopting current JavaScript best practices and ES module standards.
+
+**Unit Tests:** As part of this modernization, core development dependencies like Jest (to v29) and Vue Test Utils (to v2) were upgraded. Unfortunately, integrating these latest testing tools with a Vue 2 project that uses an ES Module setup (`"type": "module"` in `package.json`) has presented significant challenges. Due to these complexities, the unit tests are **currently not passing**.
+
+While the library's runtime code is believed to be functional and benefits from the modernization, contributions to help resolve the testing incompatibilities and restore full test coverage would be highly appreciated.
+### Note on PouchDB v7.0.0 Fetch Behavior
+
+PouchDB v7.0.0 had an issue where `fetch` requests did not send credentials (e.g., cookies) by default for cross-domain requests, potentially leading to authentication errors. This was documented in [PouchDB issue #7391](https://github.com/pouchdb/pouchdb/issues/7391).
+
+This issue was resolved in **PouchDB v7.1.1** and later versions, where `fetch` defaults were updated to include credentials, aligning with XHR behavior.
+
+**It is recommended to use PouchDB v7.1.1 or a newer version to avoid this issue.** If you are using this plugin (`pouch-vue`), you are likely using a PouchDB version where this is no longer a concern.
 ## API
 ### $pouch
 

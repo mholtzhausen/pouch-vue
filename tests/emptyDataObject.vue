@@ -1,9 +1,11 @@
 <template>
 </template>
 <script>
-  export default {
-    data: {}
+    export default {
+        data: function() {
+            return {};
+        },
     
     
-  }
+    };
 </script>

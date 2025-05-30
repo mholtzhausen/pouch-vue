@@ -1,245 +1,153 @@
-import PouchDB from 'pouchdb-node';
-import PouchVue from '../src/index'
-import lf from 'pouchdb-find';
-import plf from 'pouchdb-live-find';
+// PouchDB and plugins are registered in global-mocks.js
+// No need for local PouchDB.plugin calls here.
+import PouchDB from 'pouchdb-node'; // Still need PouchDB constructor for plugin options
+import PouchVue from '../src/index';
 
 // vue-test-utils
-import { createLocalVue, mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'; // createLocalVue removed
 
 // import test vue single file components
-import emptyDataFunction from './emptyDataFunction.vue'
-import emptyDataObject from './emptyDataObject.vue'
-import noData from './noDataFunctionOrObject.vue'
-import existingData from './ExistingTodosDataFunction.vue'
-import todosDataWithSelector from './TodosDataFunctionWithSelector.vue'
+import emptyDataFunction from './emptyDataFunction.vue';
+import emptyDataObject from './emptyDataObject.vue';
+import noData from './noDataFunctionOrObject.vue';
+import existingData from './ExistingTodosDataFunction.vue';
+import todosDataWithSelector from './TodosDataFunctionWithSelector.vue';
 
 describe('Pouch options are returned by function', () => {
-  describe('Unit Tests that todos is defined on Vue components', () => {
-    var testDatum = [
-      { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
-      { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
-      { name: 'Test Plugin with No Data Function Or Object', component: noData },
-      { name: 'Test Plugin with Existing Data Function', component: existingData }
-    ];
+    describe('Unit Tests that todos is defined on Vue components', () => {
+        const testDatum = [ // const instead of var
+            { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
+            { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
+            { name: 'Test Plugin with No Data Function Or Object', component: noData },
+            { name: 'Test Plugin with Existing Data Function', component: existingData },
+        ];
 
-    for (var i = 0; i < testDatum.length; i++) {
+        testDatum.forEach(datum => { // Modern loop
+            const { component: tryTestData, name: tryTestName } = datum; // Destructuring
 
-
-      let tryTestData = testDatum[i].component;
-      let tryTestName = testDatum[i].name;
-
-      function testFunc() {
-        const localVue = createLocalVue()
-
-        // add requisite PouchDB plugins
-        PouchDB.plugin(lf);
-        PouchDB.plugin(plf);
-
-        // add Vue.js plugin
-        localVue.use(PouchVue, {
-          pouch: PouchDB,
-          defaultDB: 'farfromhere',
+            test(tryTestName, () => { // Arrow function for test
+                // createLocalVue and localVue.use removed
+                const wrapper = mount(tryTestData, {
+                    global: { // New way to install plugins
+                        plugins: [[PouchVue, { pouch: PouchDB, defaultDB: 'farfromhere' }]],
+                    },
+                    pouch() { // Custom option for the component
+                        return {
+                            todos: {/*empty selector*/ },
+                        };
+                    },
+                });
+                expect(wrapper.vm.$data.todos).not.toBeUndefined();
+            });
         });
+    });
 
+    describe('Unit Tests to see that the todos property on the data root level is connected with the todos property on the vue instance', () => {
+        const testDatum = [
+            { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
+            { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
+            { name: 'Test Plugin with No Data Function Or Object', component: noData },
+            { name: 'Test Plugin with Existing Data Function', component: existingData },
+        ];
 
-        const wrapper = mount(tryTestData, {
-          localVue,
-          pouch() {
-            return {
-              todos: {/*empty selector*/ }
-            }
-          }
-        })
-
-        expect(wrapper.vm.$data.todos).not.toBeUndefined();
-      }
-      test(tryTestName, testFunc);
-    }
-  })
-
-  describe('Unit Tests to see that the todos property on the data root level is connected with the todos property on the vue instance (this is what the beforeCreate lifecycle hook does)', () => {
-    var testDatum = [
-      { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
-      { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
-      { name: 'Test Plugin with No Data Function Or Object', component: noData },
-      { name: 'Test Plugin with Existing Data Function', component: existingData }
-    ];
-
-    for (var i = 0; i < testDatum.length; i++) {
-
-
-      let tryTestData = testDatum[i].component;
-      let tryTestName = testDatum[i].name;
-
-      function testFunc() {
-        const localVue = createLocalVue()
-
-        // add requisite PouchDB plugins
-        PouchDB.plugin(lf);
-        PouchDB.plugin(plf);
-
-        // add Vue.js plugin
-        localVue.use(PouchVue, {
-          pouch: PouchDB,
-          defaultDB: 'farfromhere',
+        testDatum.forEach(datum => {
+            const { component: tryTestData, name: tryTestName } = datum;
+            test(tryTestName, () => {
+                const wrapper = mount(tryTestData, {
+                    global: {
+                        plugins: [[PouchVue, { pouch: PouchDB, defaultDB: 'farfromhere' }]],
+                    },
+                    pouch() {
+                        return {
+                            todos: {/*empty selector*/ },
+                        };
+                    },
+                });
+                wrapper.vm.todos = ['north', 'east', 'south', 'west'];
+                expect(wrapper.vm.$data.todos).toBe(wrapper.vm.todos);
+            });
         });
-
-
-        const wrapper = mount(tryTestData, {
-          localVue,
-          pouch() {
-            return {
-              todos: {/*empty selector*/ }
-            }
-          }
-        })
-
-        wrapper.vm.todos = ['north', 'east', 'south', 'west'];
-
-        expect(wrapper.vm.$data.todos).toBe(wrapper.vm.todos);
-
-      }
-      test(tryTestName, testFunc);
-    }
-
-  })
-})
+    });
+});
 
 describe('Pouch options are objects', () => {
-  describe('Unit Tests that todos is defined on Vue components', () => {
-    var testDatum = [
-      { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
-      { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
-      { name: 'Test Plugin with No Data Function Or Object', component: noData },
-      { name: 'Test Plugin with Existing Data Function', component: existingData }
-    ];
-
-    for (var i = 0; i < testDatum.length; i++) {
-
-
-      let tryTestData = testDatum[i].component;
-      let tryTestName = testDatum[i].name;
-
-      function testFunc() {
-        const localVue = createLocalVue()
-
-        // add requisite PouchDB plugins
-        PouchDB.plugin(lf);
-        PouchDB.plugin(plf);
-
-        // add Vue.js plugin
-        localVue.use(PouchVue, {
-          pouch: PouchDB,
-          defaultDB: 'farfromhere',
+    describe('Unit Tests that todos is defined on Vue components', () => {
+        const testDatum = [
+            { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
+            { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
+            { name: 'Test Plugin with No Data Function Or Object', component: noData },
+            { name: 'Test Plugin with Existing Data Function', component: existingData },
+        ];
+        testDatum.forEach(datum => {
+            const { component: tryTestData, name: tryTestName } = datum;
+            test(tryTestName, () => {
+                const wrapper = mount(tryTestData, {
+                    global: {
+                        plugins: [[PouchVue, { pouch: PouchDB, defaultDB: 'farfromhere' }]],
+                    },
+                    pouch: { // Custom option as object
+                        todos: {/*empty selector*/ },
+                    },
+                });
+                expect(wrapper.vm.$data.todos).not.toBeUndefined();
+            });
         });
+    });
 
-
-        const wrapper = mount(tryTestData, {
-          localVue,
-          pouch: {
-            todos: {/*empty selector*/ }
-          }
-        })
-
-        expect(wrapper.vm.$data.todos).not.toBeUndefined();
-      }
-      test(tryTestName, testFunc);
-    }
-  })
-
-  describe('Unit Tests to see that the todos property on the data root level is connected with the todos property on the vue instance (this is what the beforeCreate lifecycle hook does)', () => {
-    var testDatum = [
-      { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
-      { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
-      { name: 'Test Plugin with No Data Function Or Object', component: noData },
-      { name: 'Test Plugin with Existing Data Function', component: existingData }
-    ];
-
-    for (var i = 0; i < testDatum.length; i++) {
-
-
-      let tryTestData = testDatum[i].component;
-      let tryTestName = testDatum[i].name;
-
-      function testFunc() {
-        const localVue = createLocalVue()
-
-        // add requisite PouchDB plugins
-        PouchDB.plugin(lf);
-        PouchDB.plugin(plf);
-
-        // add Vue.js plugin
-        localVue.use(PouchVue, {
-          pouch: PouchDB,
-          defaultDB: 'farfromhere',
+    describe('Unit Tests to see that the todos property on the data root level is connected with the todos property on the vue instance', () => {
+        const testDatum = [
+            { name: 'Test Plugin with Empty Data Function', component: emptyDataFunction },
+            { name: 'Test Plugin with Empty Data Object', component: emptyDataObject },
+            { name: 'Test Plugin with No Data Function Or Object', component: noData },
+            { name: 'Test Plugin with Existing Data Function', component: existingData },
+        ];
+        testDatum.forEach(datum => {
+            const { component: tryTestData, name: tryTestName } = datum;
+            test(tryTestName, () => {
+                const wrapper = mount(tryTestData, {
+                    global: {
+                        plugins: [[PouchVue, { pouch: PouchDB, defaultDB: 'farfromhere' }]],
+                    },
+                    pouch: {
+                        todos: {/*empty selector*/ },
+                    },
+                });
+                wrapper.vm.todos = ['north', 'east', 'south', 'west'];
+                expect(wrapper.vm.$data.todos).toBe(wrapper.vm.todos);
+            });
         });
+    });
+});
 
-
-        const wrapper = mount(tryTestData, {
-          localVue,
-          pouch: {
-            todos: {/*empty selector*/ }
-          }
-        })
-
-        wrapper.vm.todos = ['north', 'east', 'south', 'west'];
-
-        expect(wrapper.vm.$data.todos).toBe(wrapper.vm.todos);
-
-      }
-      test(tryTestName, testFunc);
-    }
-
-  })
-})
 describe('Set selector to null', () => {
-    var testDatum = [
-      { name: 'Test Plugin with Reactive Selector that can return null', component: todosDataWithSelector },
+    const testDatum = [ // const
+        { name: 'Test Plugin with Reactive Selector that can return null', component: todosDataWithSelector },
     ];
 
-    for (var i = 0; i < testDatum.length; i++) {
+    testDatum.forEach(datum => { // Modern loop
+        const { component: tryTestData, name: tryTestName } = datum;
 
+        const selector = function() { // selector function remains, 'this' context is important for component
+            return (this.age < this.maxAge) ? null : {};
+        };
 
-      let tryTestData = testDatum[i].component;
-      let tryTestName = testDatum[i].name;
+        test(tryTestName, async () => { // async test function
+            // createLocalVue and localVue.use removed
+            const wrapper = mount(tryTestData, {
+                global: { // New way to install plugins
+                    plugins: [[PouchVue, { pouch: PouchDB, defaultDB: 'farfromhere' }]],
+                },
+                pouch: { // Custom option
+                    todos: selector, // 'this' in selector will refer to component vm
+                },
+            });
 
-      // selector will return null if the age is less than the max age
-      // purely to get a reactive selector that will return null occasionally and
-      // trip up the watcher on the pouch database config options
-      let selector = function () { return (this.age < this.maxAge) ? null : {} }
-
-      function testFunc(done) {
-        const localVue = createLocalVue()
-
-        // add requisite PouchDB plugins
-        PouchDB.plugin(lf);
-        PouchDB.plugin(plf);
-
-        // add Vue.js plugin
-        localVue.use(PouchVue, {
-          pouch: PouchDB,
-          defaultDB: 'farfromhere',
-        });
-
-
-        const wrapper = mount(tryTestData, {
-          localVue,
-          pouch: {
-            todos: selector
-          }
-        })
-
-        wrapper.vm.todos = ['north', 'east', 'south', 'west'];
-
-        wrapper.vm.maxAge = 50;
+            wrapper.vm.todos = ['north', 'east', 'south', 'west']; // Initialize if needed by component logic
+            wrapper.vm.maxAge = 50; // Initialize if needed by component logic
           
-        //watchers are deferred to the next update cycle that Vue uses to look for changes.
-        //the change to the selector has a watcher on it in pouch-vue
-        wrapper.vm.$nextTick(() => {  
-          expect(wrapper.emitted('pouchdb-livefeed-error')).toHaveLength(1);
-          done();
-        });            
-      }
-      test(tryTestName, testFunc);
-    }
-})
+            await wrapper.vm.$nextTick(); // await $nextTick
+            expect(wrapper.emitted('pouchdb-livefeed-error')).toHaveLength(1);
+            // done() removed
+        });
+    });
+});
